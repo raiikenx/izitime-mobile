@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Izitime Mobile</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>body{font-family:Inter,ui-sans-serif,system-ui;} .card{background:#1e293b;}</style>
+</head>
+<body class="bg-slate-900 text-slate-100 p-4">
+  <h1 class="text-xl font-bold mb-4">Izitime Mobile</h1>
+  <div class="card p-4 rounded-xl mb-4">
+    <h2 class="font-semibold mb-2">Saisie du jour</h2>
+    <input id="date" type="date" class="w-full p-2 mb-2 rounded bg-slate-800 border border-slate-700">
+    <input id="arrival" type="time" class="w-full p-2 mb-2 rounded bg-slate-800 border border-slate-700">
+    <input id="departure" type="time" class="w-full p-2 mb-2 rounded bg-slate-800 border border-slate-700">
+    <input id="pause" type="number" placeholder="Pause (min)" class="w-full p-2 mb-2 rounded bg-slate-800 border border-slate-700">
+    <button id="save" class="w-full p-2 rounded bg-emerald-600">Enregistrer</button>
+  </div>
+
+  <div class="card p-4 rounded-xl mb-4">
+    <h2 class="font-semibold mb-2">Semaine</h2>
+    <div id="week"></div>
+    <div class="mt-2 text-sm text-right">Total: <span id="total">0h00</span></div>
+  </div>
+
+  <div class="card p-4 rounded-xl">
+    <h2 class="font-semibold mb-2">Récap SMS</h2>
+    <input id="sms-date" type="date" class="w-full p-2 mb-2 rounded bg-slate-800 border border-slate-700">
+    <button id="copy-sms" class="w-full p-2 rounded bg-indigo-600">Copier SMS</button>
+    <pre id="sms-preview" class="mt-2 text-xs text-slate-300"></pre>
+  </div>
+
+<script>
+const STORAGE_KEY = "izitime-mobile";
+let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+
+function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+
+function hhmmToMinutes(hhmm){ if(!hhmm) return null; let [h,m]=hhmm.split(":").map(Number); return h*60+m; }
+function minutesToHhmm(m){ if(m==null) return "--:--"; let h=Math.floor(m/60); let mm=(m%60).toString().padStart(2,"0"); return h+"h"+mm; }
+
+function renderWeek(){ 
+  let now = new Date();
+  let start = new Date(now); start.setDate(now.getDate()-((now.getDay()+6)%7)); start.setHours(0,0,0,0);
+  let html = "<table class='w-full text-sm'><tr><th>Jour</th><th>Arrivée</th><th>Départ</th><th>Pause</th><th>Durée</th></tr>";
+  let total=0;
+  for(let i=0;i<7;i++){ 
+    let d=new Date(start); d.setDate(start.getDate()+i);
+    let key=d.toISOString().slice(0,10);
+    let rec=data[key];
+    let arr=rec?rec.arrival:"--:--", dep=rec?rec.departure:"--:--", pause=rec?rec.pause:0, dur="--:--";
+    if(rec && rec.arrival && rec.departure){ let mins=hhmmToMinutes(rec.departure)-hhmmToMinutes(rec.arrival)-pause; if(mins<0) mins=0; dur=minutesToHhmm(mins); total+=mins; }
+    html += `<tr><td>${d.toLocaleDateString('fr-FR',{weekday:'short'})}</td><td>${arr}</td><td>${dep}</td><td>${pause}m</td><td>${dur}</td></tr>`;
+  }
+  html += "</table>"; 
+  document.getElementById("week").innerHTML=html;
+  document.getElementById("total").innerText=minutesToHhmm(total);
+}
+
+document.getElementById("save").onclick=()=>{
+  let d=document.getElementById("date").value;
+  if(!d){alert("Choisir une date");return;}
+  data[d]={arrival:document.getElementById("arrival").value,departure:document.getElementById("departure").value,pause:Number(document.getElementById("pause").value||0)};
+  save(); renderWeek();
+};
+
+function buildSms(d){ let rec=data[d]; if(!rec) return "Aucune entrée"; let arr=rec.arrival||"--:--"; let dep=rec.departure||"--:--"; let pause=rec.pause||0; let dur="--:--"; if(rec.arrival&&rec.departure){ let mins=hhmmToMinutes(rec.departure)-hhmmToMinutes(rec.arrival)-pause; if(mins<0) mins=0; dur=minutesToHhmm(mins);} let day=new Date(d).toLocaleDateString('fr-FR',{weekday:'long',day:'2-digit',month:'2-digit'}); return `📅 ${day}\n🕗 Arrivée : ${arr}\n🕔 Départ : ${dep}\n☕ Pause : ${pause} min\n⏱ Durée : ${dur}`; }
+
+document.getElementById("copy-sms").onclick=async()=>{ let d=document.getElementById("sms-date").value; if(!d){alert("Choisir une date");return;} let txt=buildSms(d); document.getElementById("sms-preview").innerText=txt; try{ await navigator.clipboard.writeText(txt); alert("Copié ✅"); }catch(e){ prompt("Copie manuelle:",txt);} };
+
+renderWeek();
+</script>
+<script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('service-worker.js');}
+</script>
+</body>
+</html>
